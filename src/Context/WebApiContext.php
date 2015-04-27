@@ -20,6 +20,7 @@ use PHPUnit_Framework_Assert as Assertions;
  * Provides web API description definitions.
  *
  * @author Konstantin Kudryashov <ever.zet@gmail.com>
+ * @author Nik Spijkerman <nikspijkerman@gmail.com>
  */
 class WebApiContext implements ApiClientAwareContext
 {
@@ -56,6 +57,16 @@ class WebApiContext implements ApiClientAwareContext
     public function setClient(ClientInterface $client)
     {
         $this->client = $client;
+    }
+
+    public function getClient()
+    {
+        return $this->client;
+    }
+
+    public function getResponse()
+    {
+        return $this->response;
     }
 
     /**
@@ -225,6 +236,16 @@ class WebApiContext implements ApiClientAwareContext
         $expectedRegexp = '/' . preg_quote($text) . '/';
         $actual = (string) $this->response->getBody();
         Assertions::assertNotRegExp($expectedRegexp, $actual);
+    }
+
+    /**
+     * Checks that the response is valid JSON without inspecting the actual content
+     *
+     * @Then /^(?:the )?response is json$/
+     */
+    public function theResponseIsJson()
+    {
+        Assertions::assertInternalType('array', $this->response->json());
     }
 
     /**
