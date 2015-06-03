@@ -13,6 +13,7 @@ namespace Behat\WebApiExtension\Context;
 use Behat\Gherkin\Node\PyStringNode;
 use Behat\Gherkin\Node\TableNode;
 use GuzzleHttp\ClientInterface;
+use GuzzleHttp\Exception\ClientException;
 use GuzzleHttp\Exception\RequestException;
 use GuzzleHttp\Psr7\Request;
 use PHPUnit_Framework_Assert as Assertions;
@@ -113,9 +114,10 @@ class WebApiContext implements ApiClientAwareContext
     public function iSendARequest($method, $url)
     {
         $url = $this->prepareUrl($url);
-        $this->request = new Request($method, $url, $this->headers);
 
-        $this->sendRequest();
+        $this->sendRequest($method, $url, array(
+            'headers' => $this->headers,
+        ));
     }
 
     /**
@@ -136,11 +138,9 @@ class WebApiContext implements ApiClientAwareContext
             $fields[$key] = $this->replacePlaceHolder($val);
         }
 
-        $body = json_encode($fields);
-
-        $this->request = new Request($method, $url, $this->headers, \GuzzleHttp\Psr7\stream_for($body));
-
-        $this->sendRequest();
+        $this->sendRequest($method, $url, array(
+            'json' => $fields,
+        ));
     }
 
     /**
@@ -157,9 +157,10 @@ class WebApiContext implements ApiClientAwareContext
         $url = $this->prepareUrl($url);
         $string = $this->replacePlaceHolder(trim($string));
 
-        $this->request = new Request($method, $url, $this->headers, \GuzzleHttp\Psr7\stream_for($string));
-
-        $this->sendRequest();
+        $this->sendRequest($method, $url, array(
+            'headers' => $this->headers,
+            'body' => $string,
+        ));
     }
 
     /**
@@ -176,11 +177,13 @@ class WebApiContext implements ApiClientAwareContext
         $url = $this->prepareUrl($url);
         $body = $this->replacePlaceHolder(trim($body));
 
-        $body = implode('&', explode("\n", $body));
+        $fields = array();
+        parse_str(implode('&', explode("\n", $body)), $fields);
 
-        $this->request = new Request($method, $url, $this->headers, \GuzzleHttp\Psr7\stream_for($body));
-
-        $this->sendRequest();
+        $this->sendRequest($method, $url, array(
+            'headers' => $this->headers,
+            'form_params' => $fields,
+        ));
     }
 
     /**
@@ -243,7 +246,7 @@ class WebApiContext implements ApiClientAwareContext
      */
     public function theResponseIsJson()
     {
-        Assertions::assertInternalType('array', json_decode($this->response->getBody()));
+        Assertions::assertInternalType('array', json_decode($this->response->getBody(), true));
     }
 
     /**
@@ -282,16 +285,22 @@ class WebApiContext implements ApiClientAwareContext
      */
     public function printResponse()
     {
-        $request = $this->request;
-        $response = $this->response;
+        $request = '';
+        if ($this->request instanceof Request) {
+            $request = sprintf(
+                "%s %s => ",
+                $this->request->getMethod(),
+                $this->request->getUri()
+            );
+        }
 
-        echo sprintf(
-            "%s %s => %d:\n%s",
-            $request->getMethod(),
-            $request->getUrl(),
-            $response->getStatusCode(),
-            $response->getBody()
+        $response = sprintf(
+            "%d:\n%s",
+            $this->response->getStatusCode(),
+            $this->response->getBody()
         );
+
+        echo $request.$response;
     }
 
     /**
@@ -377,11 +386,17 @@ class WebApiContext implements ApiClientAwareContext
         }
     }
 
-    private function sendRequest()
+    /**
+     * @param string $method
+     * @param string $url
+     * @param array $options
+     */
+    private function sendRequest($method, $url, $options)
     {
         try {
-            $this->response = $this->getClient()->send($this->request);
-        } catch (RequestException $e) {
+            $this->response = $this->getClient()->request($method, $url, $options);
+        } catch (ClientException $e) {
+            $this->request = $e->getRequest();
             $this->response = $e->getResponse();
 
             if (null === $this->response) {
